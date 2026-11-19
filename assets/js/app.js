@@ -641,12 +641,32 @@ async function renderEvent(el, d, doc) {
   };
 }
 
-/* ---------- 下載已填寫版本（另開新分頁） ---------- */
+/* ---------- 下載已填寫版本 ----------
+   電腦：另開新分頁下載。
+   手機／平板：瀏覽器會擋掉「新分頁裡的下載」，所以改在原頁下載，
+   並跳出「下載檔案」按鈕，萬一沒有自動開始，點一下就能存檔。 */
+const IS_MOBILE = (() => { try { return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent)) || matchMedia('(pointer:coarse)').matches; } catch (_) { return false; } })();
+function readyDialog(url, name) {
+  const m = document.createElement('div');
+  m.className = 'fk-modal';
+  m.innerHTML = `<div class="fk-dialog mo-pop-in" role="dialog" aria-modal="true" aria-labelledby="dlReady">
+    <h3 id="dlReady">檔案已準備好</h3>
+    <p>如果沒有自動開始下載，請點下方按鈕存檔。<br><small>${esc(name)}</small></p>${/Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent) ? '<p class="s-inapp">目前在 LINE／Facebook 等 App 內建瀏覽器，可能無法下載檔案。請點右上角選單，選「用預設瀏覽器開啟」（Safari 或 Chrome）後再下載。</p>' : ''}
+    <div class="fk-pop-f"><a class="is-pri s-dlready" href="${url}" download="${esc(name)}">${ic('dl')}下載檔案</a><button type="button" data-no>關閉</button></div></div>`;
+  document.body.appendChild(m);
+  const close = () => m.remove();
+  $('[data-no]', m).onclick = close;
+  $('a', m).addEventListener('click', () => setTimeout(close, 600));
+  m.addEventListener('click', e => { if (e.target === m) close(); });
+}
 async function downloadFilled(doc, btn) {
   if (!FORM || FORM.code !== doc.code || !FORM.ops) return;
   const name = doc.file.replace(/\.docx$/i, '') + '_已填寫.docx';
-  let w = null; try { w = window.open('', '_blank'); } catch (_) {}
-  if (w) { try { w.document.write('<!doctype html><meta charset="utf-8"><title>下載中…</title><body style="font-family:system-ui,sans-serif;padding:48px;color:#333"><p>檔案產生中，請稍候…</p></body>'); w.document.close(); } catch (_) { w = null; } }
+  let w = null;
+  if (!IS_MOBILE) {
+    try { w = window.open('', '_blank'); } catch (_) {}
+    if (w) { try { w.document.write('<!doctype html><meta charset="utf-8"><title>下載中…</title><body style="font-family:system-ui,sans-serif;padding:48px;color:#333"><p>檔案產生中，請稍候…</p></body>'); w.document.close(); } catch (_) { w = null; } }
+  }
   const btns = $$('[data-fill-dl]'), olds = btns.map(b => b.innerHTML);
   btns.forEach(b => { b.disabled = true; b.innerHTML = '<span class="mo-dots" style="font-size:8px"><i></i><i></i><i></i></span>產生中…'; });
   try {
@@ -661,9 +681,13 @@ async function downloadFilled(doc, btn) {
         w.document.body.innerHTML = `<p>✅ 已開始下載：<b>${esc(name)}</b></p><p>下載完成後可以關閉此分頁。</p>`; done = true;
       } catch (_) {}
     }
-    if (!done) { if (w) try { w.close(); } catch (_) {} const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-    toast('已下載：' + name); say('下載好了！請再確認一次內容，簽章記得補上喔', 'mo-mascot--jump', 'laugh', 4200);
+    if (!done) {
+      if (w) try { w.close(); } catch (_) {}
+      const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      if (IS_MOBILE) readyDialog(url, name);
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 10 * 60000);
+    toast(IS_MOBILE ? '檔案已產生' : '已下載：' + name); say('下載好了！請再確認一次內容，簽章記得補上喔', 'mo-mascot--jump', 'laugh', 4200);
   } catch (e) { console.error(e); if (w) try { w.close(); } catch (_) {} toast('產生失敗，請改用「下載原始文件」'); say('哎呀，出了點問題…', 'mo-mascot--alert', 'cry'); }
   btns.forEach((b, i) => { b.disabled = false; b.innerHTML = olds[i]; });
 }
